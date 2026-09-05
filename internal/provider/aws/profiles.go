@@ -12,11 +12,6 @@ import (
 // every profile name found across both files, deduplicated. This is local
 // credential discovery only — no network calls, no secrets are read out.
 func discoverProfiles() []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-
 	seen := map[string]bool{}
 
 	addFrom := func(path string, stripProfilePrefix bool) {
@@ -41,15 +36,8 @@ func discoverProfiles() []string {
 		}
 	}
 
-	addFrom(filepath.Join(home, ".aws", "config"), true)
-	addFrom(filepath.Join(home, ".aws", "credentials"), false)
-
-	if envFile := os.Getenv("AWS_CONFIG_FILE"); envFile != "" {
-		addFrom(envFile, true)
-	}
-	if envFile := os.Getenv("AWS_SHARED_CREDENTIALS_FILE"); envFile != "" {
-		addFrom(envFile, false)
-	}
+	addFrom(configFilePath(), true)
+	addFrom(credentialsFilePath(), false)
 
 	profiles := make([]string, 0, len(seen))
 	for name := range seen {
@@ -59,19 +47,39 @@ func discoverProfiles() []string {
 	return profiles
 }
 
-// profileRegion reads the "region" key for a profile directly out of the
-// shared config file, without establishing any AWS session. Returns "" if
-// unset.
-func profileRegion(profile string) string {
+// configFilePath returns the shared config file to read, honoring
+// AWS_CONFIG_FILE the same way the AWS CLI/SDK does (as a full override of
+// the default location, not an addition to it).
+func configFilePath() string {
+	if envFile := os.Getenv("AWS_CONFIG_FILE"); envFile != "" {
+		return envFile
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	path := filepath.Join(home, ".aws", "config")
-	if envFile := os.Getenv("AWS_CONFIG_FILE"); envFile != "" {
-		path = envFile
+	return filepath.Join(home, ".aws", "config")
+}
+
+// credentialsFilePath returns the shared credentials file to read, honoring
+// AWS_SHARED_CREDENTIALS_FILE as a full override, matching AWS CLI/SDK
+// behavior.
+func credentialsFilePath() string {
+	if envFile := os.Getenv("AWS_SHARED_CREDENTIALS_FILE"); envFile != "" {
+		return envFile
 	}
-	f, err := ini.Load(path)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".aws", "credentials")
+}
+
+// profileRegion reads the "region" key for a profile directly out of the
+// shared config file, without establishing any AWS session. Returns "" if
+// unset.
+func profileRegion(profile string) string {
+	f, err := ini.Load(configFilePath())
 	if err != nil {
 		return ""
 	}

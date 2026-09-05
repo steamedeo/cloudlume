@@ -19,22 +19,50 @@ const appVersion = "v0.1.0"
 // together, not behind a switcher.
 const sidebarAll = "All Accounts"
 
+// focus tracks which pane arrow keys act on.
+type focus int
+
+const (
+	focusSidebar focus = iota
+	focusTable
+)
+
 // Model is cloudlume's root Bubble Tea model.
 type Model struct {
 	providers []provider.Provider
 	refresh   time.Duration
 
-	accounts []model.Account
-	statuses map[string]*model.AccountStatus // key: account.Name
+	accounts  []model.Account
+	statuses  map[string]*model.AccountStatus // key: account.Name
 	byAccount map[string][]model.Resource     // key: account.Name
+
+	accountsDiscovered bool // accountsMsg has arrived (possibly with zero accounts)
+	loadDone           bool // every account's first fetch has settled (ok or error)
 
 	sidebarIndex int // 0 = All Accounts, 1..N = accounts (sorted)
 	tabIndex     int
 	cursor       int
+	focus        focus
+	detailOpen   bool // whether the selected resource's detail view is showing
 	paused       bool
+
+	filtering   bool   // currently typing into the fuzzy-filter input
+	filterQuery string // active fuzzy-filter query for the current tab
 
 	width, height int
 	ready         bool
+}
+
+// settledCount returns how many accounts have completed their first fetch
+// (successfully or not), for the startup loading bar.
+func (m Model) settledCount() int {
+	settled := 0
+	for _, st := range m.statuses {
+		if !st.LastRefresh.IsZero() {
+			settled++
+		}
+	}
+	return settled
 }
 
 // New builds the initial model. providers should already be registered
@@ -109,6 +137,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case accountsMsg:
 		m.accounts = msg.accounts
+		m.accountsDiscovered = true
+		if len(m.accounts) == 0 {
+			m.loadDone = true
+		}
 		var cmds []tea.Cmd
 		for _, a := range m.accounts {
 			m.statuses[a.Name] = &model.AccountStatus{Account: a, Health: model.HealthWarn}
@@ -132,6 +164,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			st.ResourceCount = len(msg.resources)
 			m.byAccount[msg.account.Name] = msg.resources
 		}
+		if !m.loadDone && m.settledCount() >= len(m.accounts) {
+			m.loadDone = true
+		}
 		m.clampCursor()
 		return m, nil
 
@@ -150,40 +185,80 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.Type == tea.KeyCtrlC {
+		return m, tea.Quit
+	}
+	if m.filtering {
+		return m.handleFilterKey(msg)
+	}
+
 	switch msg.String() {
 	case "ctrl+c", "q":
 		return m, tea.Quit
 	case "up", "k":
-		if m.cursor > 0 {
+		if m.focus == focusSidebar {
+			if m.sidebarIndex > 0 {
+				m.sidebarIndex--
+				m.cursor = 0
+				m.detailOpen = false
+				m.filterQuery = ""
+			}
+		} else if m.cursor > 0 {
 			m.cursor--
 		}
 	case "down", "j":
-		m.cursor++
-		m.clampCursor()
+		if m.focus == focusSidebar {
+			if m.sidebarIndex < len(m.accounts) {
+				m.sidebarIndex++
+				m.cursor = 0
+				m.detailOpen = false
+				m.filterQuery = ""
+			}
+		} else {
+			m.cursor++
+			m.clampCursor()
+		}
 	case "left", "h":
-		if m.sidebarIndex > 0 {
-			m.sidebarIndex--
-			m.cursor = 0
-		}
+		m.focus = focusSidebar
 	case "right", "l":
-		if m.sidebarIndex < len(m.accounts) {
-			m.sidebarIndex++
-			m.cursor = 0
-		}
+		m.focus = focusTable
 	case "tab":
 		m.tabIndex = (m.tabIndex + 1) % len(model.AllCategories)
 		m.cursor = 0
+		m.detailOpen = false
+		m.filterQuery = ""
 	case "shift+tab":
 		m.tabIndex--
 		if m.tabIndex < 0 {
 			m.tabIndex = len(model.AllCategories) - 1
 		}
 		m.cursor = 0
-	case "1", "2", "3", "4":
+		m.detailOpen = false
+		m.filterQuery = ""
+	case "1", "2", "3", "4", "5":
 		idx := int(msg.String()[0] - '1')
 		if idx < len(model.AllCategories) {
 			m.tabIndex = idx
 			m.cursor = 0
+			m.detailOpen = false
+			m.filterQuery = ""
+		}
+	case "enter":
+		if m.detailOpen {
+			m.detailOpen = false
+		} else if m.focus == focusTable && len(m.visibleResources()) > 0 {
+			m.detailOpen = true
+		}
+	case "esc":
+		if m.filterQuery != "" {
+			m.filterQuery = ""
+			m.cursor = 0
+		} else {
+			m.detailOpen = false
+		}
+	case "/":
+		if !m.detailOpen && m.focus == focusTable {
+			m.filtering = true
 		}
 	case "p":
 		m.paused = !m.paused
@@ -193,6 +268,30 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, fetchAccountCmd(m.providers, a))
 		}
 		return m, tea.Batch(cmds...)
+	}
+	return m, nil
+}
+
+// handleFilterKey handles input while the fuzzy-filter box is being typed
+// into — every keystroke here is text for the query, not a navigation
+// shortcut, so it's routed separately from handleKey's normal switch.
+func (m Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.filtering = false
+		m.filterQuery = ""
+		m.cursor = 0
+	case tea.KeyEnter:
+		m.filtering = false
+	case tea.KeyBackspace:
+		if len(m.filterQuery) > 0 {
+			runes := []rune(m.filterQuery)
+			m.filterQuery = string(runes[:len(runes)-1])
+			m.cursor = 0
+		}
+	case tea.KeyRunes, tea.KeySpace:
+		m.filterQuery += msg.String()
+		m.cursor = 0
 	}
 	return m, nil
 }
@@ -232,6 +331,12 @@ func (m Model) visibleResources() []model.Resource {
 				out = append(out, r)
 			}
 		}
+	}
+
+	if m.filterQuery != "" {
+		// Relevance order matters more than the stable alpha sort while
+		// actively searching.
+		return filterResources(out, m.filterQuery)
 	}
 
 	sort.Slice(out, func(i, j int) bool {

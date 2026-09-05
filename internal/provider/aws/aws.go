@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"sync"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 
 	"github.com/steamedeo/cloudlume/internal/config"
 	"github.com/steamedeo/cloudlume/internal/model"
@@ -23,7 +23,7 @@ const defaultRegion = "us-east-1"
 type Provider struct {
 	cfg config.Config
 
-	mu             sync.RWMutex
+	mu               sync.RWMutex
 	regionsByAccount map[string][]string
 }
 
@@ -130,8 +130,10 @@ func (p *Provider) FetchResources(ctx context.Context, account model.Account) ([
 			}
 
 			var regionResources []model.Resource
-			regionResources = append(regionResources, fetchCompute(ctx, cfg, account, region)...)
+			regionResources = append(regionResources, fetchEC2(ctx, cfg, account, region)...)
 			regionResources = append(regionResources, fetchDatabases(ctx, cfg, account, region)...)
+			regionResources = append(regionResources, fetchDynamoDB(ctx, cfg, account, region)...)
+			regionResources = append(regionResources, fetchLambda(ctx, cfg, account, region)...)
 
 			mu.Lock()
 			resources = append(resources, regionResources...)
@@ -139,8 +141,8 @@ func (p *Provider) FetchResources(ctx context.Context, account model.Account) ([
 		}(region)
 	}
 
-	// S3 is a global(-ish) listing API, not per-region — fetch it once
-	// using the first region's credentials/config.
+	// S3 and CloudFront are global(-ish) listing APIs, not per-region —
+	// fetch them once using the first region's credentials/config.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -148,8 +150,12 @@ func (p *Provider) FetchResources(ctx context.Context, account model.Account) ([
 		if err != nil {
 			return
 		}
+		var globalResources []model.Resource
+		globalResources = append(globalResources, fetchStorage(ctx, cfg, account)...)
+		globalResources = append(globalResources, fetchNetworking(ctx, cfg, account)...)
+
 		mu.Lock()
-		resources = append(resources, fetchStorage(ctx, cfg, account)...)
+		resources = append(resources, globalResources...)
 		mu.Unlock()
 	}()
 

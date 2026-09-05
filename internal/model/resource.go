@@ -9,15 +9,16 @@ import "time"
 type Category string
 
 const (
-	CategoryCompute   Category = "Compute"
-	CategoryStorage   Category = "Storage"
-	CategoryDatabase  Category = "Databases"
-	CategoryNetwork   Category = "Networking"
-	CategoryUnknown   Category = "Other"
+	CategoryEC2      Category = "EC2"
+	CategoryStorage  Category = "Storage"
+	CategoryDatabase Category = "Databases"
+	CategoryLambda   Category = "Lambda"
+	CategoryNetwork  Category = "Networking"
+	CategoryUnknown  Category = "Other"
 )
 
 // AllCategories defines the fixed tab order shown in the TUI.
-var AllCategories = []Category{CategoryCompute, CategoryStorage, CategoryDatabase, CategoryNetwork}
+var AllCategories = []Category{CategoryNetwork, CategoryEC2, CategoryLambda, CategoryDatabase, CategoryStorage}
 
 // Health summarizes a resource's state into one of three severities so the
 // UI can color it consistently regardless of the underlying provider's own

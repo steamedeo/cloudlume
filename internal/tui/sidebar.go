@@ -12,9 +12,8 @@ import (
 const sidebarWidth = 28
 
 func (m Model) renderSidebar(height int) string {
-	focused := true // sidebar navigation is always live via left/right
 	style := cardStyle
-	if focused && m.sidebarIndex >= 0 {
+	if m.focus == focusSidebar {
 		style = cardStyleFocused
 	}
 
@@ -38,26 +37,52 @@ func (m Model) renderSidebar(height int) string {
 		rows = append(rows, m.sidebarRow(name, health, count, m.sidebarIndex == i+1))
 	}
 
+	// Never emit more lines than the card has room for — an overflowing
+	// sidebar would wrap/spill past its box and break the side-by-side
+	// join with the main panel.
+	if len(rows) > height {
+		rows = rows[:height]
+	}
+
 	content := strings.Join(rows, "\n")
 	return style.Width(sidebarWidth).Height(height).Render(content)
 }
 
 func (m Model) sidebarRow(name string, health model.Health, count int, selected bool) string {
-	dot := lipgloss.NewStyle().Foreground(healthColor(health)).Render("●")
-	label := fmt.Sprintf("%s %s", dot, name)
+	// One indicator column + one space, dot + space, then name/pad/count.
+	inner := sidebarWidth - cardPaddingX // usable width inside the card's padding
+	const indicatorWidth = 2             // "▎ "
 
-	countStr := dimStyle.Render(fmt.Sprintf("%d", count))
+	countRaw := fmt.Sprintf("%d", count)
+	nameWidth := inner - indicatorWidth - 2 - len(countRaw) - 1
+	if nameWidth < 1 {
+		nameWidth = 1
+	}
+	name = truncate(name, nameWidth)
 
-	inner := sidebarWidth - 4 // card padding/border
+	bg := colBgCard
+	nameColor := colText
+	if selected {
+		bg = colBgCardHi
+		nameColor = colSky
+	}
+
+	indicator := lipgloss.NewStyle().Foreground(bg).Background(bg).Render("▎")
+	if selected {
+		indicator = lipgloss.NewStyle().Foreground(colSky).Background(bg).Render("▎")
+	}
+
+	dot := lipgloss.NewStyle().Foreground(healthColor(health)).Background(bg).Render("●")
+	nameRendered := lipgloss.NewStyle().Foreground(nameColor).Background(bg).Bold(selected).Render(name)
+	label := fmt.Sprintf("%s %s %s", indicator, dot, nameRendered)
+
+	countStr := lipgloss.NewStyle().Foreground(colDim).Background(bg).Render(countRaw)
+
 	pad := inner - lipgloss.Width(label) - lipgloss.Width(countStr)
 	if pad < 1 {
 		pad = 1
 	}
-	line := label + strings.Repeat(" ", pad) + countStr
+	padding := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", pad))
 
-	rowStyle := lipgloss.NewStyle().Background(colBgCard)
-	if selected {
-		rowStyle = lipgloss.NewStyle().Background(colBgCardHi).Bold(true)
-	}
-	return rowStyle.Width(inner + 2).Render(" " + line)
+	return label + padding + countStr
 }

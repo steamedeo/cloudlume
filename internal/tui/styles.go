@@ -17,10 +17,8 @@ import (
 // serverlume's pink+lavender but built from the same recipe: one primary,
 // one secondary, blended in LUV space for gradients.
 const (
-	hexSky     = "#5fd7ff" // primary accent
-	hexSkySoft = "#9fe8ff"
-	hexViolet  = "#8b7cff" // secondary accent
-	hexVioletD = "#6f5cc4"
+	hexSky    = "#5fd7ff" // primary accent
+	hexViolet = "#8b7cff" // secondary accent
 
 	hexBgPage   = "#0b0e14"
 	hexBgCard   = "#121722"
@@ -30,7 +28,6 @@ const (
 
 	hexText = "#eef2fb"
 	hexDim  = "#7c88a6"
-	hexTrack = "#232b3d"
 
 	hexGreen = "#4ade80"
 	hexAmber = "#fbbf24"
@@ -38,10 +35,8 @@ const (
 )
 
 var (
-	colSky     = lipgloss.Color(hexSky)
-	colSkySoft = lipgloss.Color(hexSkySoft)
-	colViolet  = lipgloss.Color(hexViolet)
-	colVioletD = lipgloss.Color(hexVioletD)
+	colSky    = lipgloss.Color(hexSky)
+	colViolet = lipgloss.Color(hexViolet)
 
 	colBgPage   = lipgloss.Color(hexBgPage)
 	colBgCard   = lipgloss.Color(hexBgCard)
@@ -51,7 +46,6 @@ var (
 
 	colText = lipgloss.Color(hexText)
 	colDim  = lipgloss.Color(hexDim)
-	colTrack = lipgloss.Color(hexTrack)
 
 	colGreen = lipgloss.Color(hexGreen)
 	colAmber = lipgloss.Color(hexAmber)
@@ -82,7 +76,24 @@ var (
 			Padding(0, 1)
 
 	cardStyleFocused = cardStyle.BorderForeground(colBorderHi)
+)
 
+// cardBorderSize is how many extra columns/rows a cardStyle box occupies
+// on screen beyond the width/height passed to Style.Width()/Height() —
+// lipgloss adds border characters on top of that content-box size (1 char
+// each on the left/right and top/bottom, since RoundedBorder draws all
+// four sides). Anything laying two cards side by side against a known
+// terminal width/height must add this back in, or the combined line ends
+// up wider than the terminal and gets wrapped by the outer page style.
+const cardBorderSize = 2
+
+// cardPaddingX is the total horizontal padding cardStyle applies inside
+// its border (Padding(0, 1) — none top/bottom, 1 each side). Style.Width()
+// covers the padded content box, so text placed inside must subtract this,
+// not the border, to get the space actually available for characters.
+const cardPaddingX = 2
+
+var (
 	dimStyle  = lipgloss.NewStyle().Foreground(colDim).Background(colBgCard)
 	textStyle = lipgloss.NewStyle().Foreground(colText).Background(colBgCard)
 	boldStyle = lipgloss.NewStyle().Foreground(colText).Bold(true).Background(colBgCard)
@@ -156,9 +167,12 @@ func gaugeColors(ratio float64) (string, string) {
 	}
 }
 
-// gauge renders a horizontal gradient bar of width cells, filled to ratio
-// (0..1), with the unfilled remainder shown as a dim dashed track.
-func gauge(width int, ratio float64) string {
+// progressBar renders a horizontal gradient bar of width cells, filled to
+// ratio (0..1) with the sky->violet accent gradient, and the unfilled
+// remainder shown as a dim dashed track — used for the startup loading
+// screen, where "more filled" always means "closer to done" rather than
+// signaling severity (contrast gaugeColors, used for utilization gauges).
+func progressBar(width int, ratio float64) string {
 	if ratio < 0 {
 		ratio = 0
 	}
@@ -166,7 +180,6 @@ func gauge(width int, ratio float64) string {
 		ratio = 1
 	}
 	filled := int(float64(width) * ratio)
-	hexA, hexB := gaugeColors(ratio)
 
 	var b strings.Builder
 	for i := 0; i < filled; i++ {
@@ -174,11 +187,11 @@ func gauge(width int, ratio float64) string {
 		if filled > 1 {
 			t = float64(i) / float64(filled-1)
 		}
-		c := blend(hexA, hexB, t)
+		c := blend(hexSky, hexViolet, t)
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex())).Render("█"))
 	}
 	if width-filled > 0 {
-		track := lipgloss.NewStyle().Foreground(colTrack).Render(strings.Repeat("╌", width-filled))
+		track := lipgloss.NewStyle().Foreground(colDim).Render(strings.Repeat("╌", width-filled))
 		b.WriteString(track)
 	}
 	return b.String()

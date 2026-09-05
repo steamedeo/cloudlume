@@ -52,11 +52,17 @@ func (m Model) renderHeader() string {
 
 	leftW := lipgloss.Width(left)
 	rightW := lipgloss.Width(right)
-	gap := m.width - leftW - rightW
-	if gap < 1 {
-		gap = 1
+	// If there's no room for both sides, drop the right side (status
+	// pills/clock are decorative) rather than let the line run wider than
+	// the terminal — an overlong line gets soft-wrapped by the outer page
+	// style, which corrupts the whole layout below it, not just this row.
+	var line string
+	if leftW+1+rightW > m.width {
+		line = padLine(left, m.width, colBgPage)
+	} else {
+		gap := m.width - leftW - rightW
+		line = left + lipgloss.NewStyle().Background(colBgPage).Render(strings.Repeat(" ", gap)) + right
 	}
-	line := left + lipgloss.NewStyle().Background(colBgPage).Render(strings.Repeat(" ", gap)) + right
 	line = padLine(line, m.width, colBgPage)
 
 	rule := gradientRule(m.width, hexSky, hexViolet)
@@ -65,16 +71,21 @@ func (m Model) renderHeader() string {
 }
 
 func (m Model) renderFooter() string {
-	legend := "↑/↓ select   ←/→ account   tab/1-4 category   p pause   r refresh   q quit"
+	legend := "↑/↓ select   ←/→ panel   enter details   / filter   tab/1-5 category   p pause   r refresh   q quit"
+	if m.filtering {
+		legend = "type to search   enter confirm   esc cancel"
+	}
 	left := footerDimStyle.Render(legend)
 	right := footerDimStyle.Render(fmt.Sprintf("cloudlume %s", appVersion))
 
 	leftW := lipgloss.Width(left)
 	rightW := lipgloss.Width(right)
-	gap := m.width - leftW - rightW
-	if gap < 1 {
-		gap = 1
+	// Same overflow guard as the header: drop the version tag rather than
+	// let the line exceed the terminal width and get soft-wrapped.
+	if leftW+1+rightW > m.width {
+		return padLine(left, m.width, colBgPage)
 	}
+	gap := m.width - leftW - rightW
 	line := left + lipgloss.NewStyle().Background(colBgPage).Render(strings.Repeat(" ", gap)) + right
 	return padLine(line, m.width, colBgPage)
 }

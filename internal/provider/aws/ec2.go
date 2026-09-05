@@ -10,7 +10,7 @@ import (
 	"github.com/steamedeo/cloudlume/internal/model"
 )
 
-func fetchCompute(ctx context.Context, cfg awssdk.Config, account model.Account, region string) []model.Resource {
+func fetchEC2(ctx context.Context, cfg awssdk.Config, account model.Account, region string) []model.Resource {
 	client := ec2.NewFromConfig(cfg)
 
 	var resources []model.Resource
@@ -68,7 +68,7 @@ func instanceToResource(inst types.Instance, account model.Account, region strin
 		Provider: "aws",
 		Account:  account.Name,
 		Region:   region,
-		Category: model.CategoryCompute,
+		Category: model.CategoryEC2,
 		Type:     "ec2-instance",
 		ID:       id,
 		Name:     name,
