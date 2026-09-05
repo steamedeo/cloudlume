@@ -25,6 +25,13 @@ No agents, no server-side component, no credentials of its own.
 ## Usage
 
 ```bash
+go install github.com/steamedeo/cloudlume/cmd/cloudlume@latest
+cloudlume
+```
+
+Or build from a local clone:
+
+```bash
 go build -o cloudlume ./cmd/cloudlume
 ./cloudlume
 ```
