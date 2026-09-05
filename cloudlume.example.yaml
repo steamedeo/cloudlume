@@ -1,0 +1,18 @@
+# Copy to cloudlume.yaml (working directory) or ~/.cloudlume.yaml to
+# customize. Every field is optional.
+
+# How often resources are re-polled.
+refreshInterval: 30s
+
+# Per-profile region overrides. Without an entry, cloudlume uses the
+# profile's own configured region (falling back to us-east-1).
+regions:
+  work-prod:
+    - us-east-1
+    - eu-west-1
+  # "*" sets the default for any profile not listed above.
+  # "*": [us-east-1]
+
+# Profiles to skip entirely during auto-discovery.
+exclude:
+  - some-rarely-used-profile
